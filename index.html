@@ -106,12 +106,45 @@
   #compare-modal th:first-child, #compare-modal td:first-child { text-align: left; }
   #compare-modal .close { float: right; cursor: pointer; border: none; background: none; font-size: 16px; }
   .hint { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 4px 0; }
+
+  /* ---------- 모바일 대응 ---------- */
+  #menu-toggle {
+    display: none; position: absolute; top: 10px; left: 10px; z-index: 20;
+    width: 42px; height: 42px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--panel-bg); font-size: 19px; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  @media (max-width: 640px) {
+    #menu-toggle { display: block; }
+    #sidebar {
+      top: auto; left: 0; right: 0; bottom: 0; width: 100%;
+      max-height: 62%; border-radius: 14px 14px 0 0; border-bottom: none;
+      transform: translateY(100%); transition: transform .25s ease;
+      padding-bottom: 24px;
+    }
+    #sidebar.open { transform: translateY(0); }
+    #sidebar h1 { font-size: 14px; padding-right: 30px; }
+    #sheet-close {
+      display: block !important; position: absolute; top: 8px; right: 10px;
+      border: none; background: none; font-size: 18px; cursor: pointer; color: var(--muted);
+    }
+    #legend { display: none; }
+    #footer { font-size: 9px; padding: 2px 8px; gap: 8px; white-space: nowrap; overflow: hidden; }
+    #statsbox { top: 8px; left: 8px; right: 8px; width: auto; max-height: 58%; }
+    #compare-modal { width: 94vw; top: 40px; }
+    .maplibregl-popup { max-width: 82vw !important; }
+    .typegrid { grid-template-columns: 1fr 1fr; }
+  }
+  #sheet-close { display: none; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
+<button id="menu-toggle" title="메뉴 열기/닫기">☰</button>
+
 <div id="sidebar" class="panel">
+  <button id="sheet-close" title="닫기">✕</button>
   <h1>서울 문화시설 3D 연구 플랫폼</h1>
   <div class="sub">실제 지형(SRTM/AWS DEM) · 실제 건물(OpenStreetMap) · 문화시설 2,149개소<br>좌표계 WGS84 (EPSG:4326)</div>
 
@@ -223,5 +256,23 @@
 </div>
 
 <script src="app.js?v=2"></script>
+<script>
+// 모바일 하단 시트 여닫기
+(function () {
+  const sidebar = document.getElementById("sidebar");
+  const toggle = document.getElementById("menu-toggle");
+  const isMobile = () => window.matchMedia("(max-width: 640px)").matches;
+  toggle.onclick = () => sidebar.classList.toggle("open");
+  document.getElementById("sheet-close").onclick = () => sidebar.classList.remove("open");
+  // 장면 이동·검색 시 시트를 닫아 지도가 보이게
+  document.querySelectorAll(".scene-btn").forEach(b =>
+    b.addEventListener("click", () => { if (isMobile()) sidebar.classList.remove("open"); }));
+  // 모바일 첫 진입 시 시트를 한 번 보여주고 3초 후 접기
+  if (isMobile()) {
+    sidebar.classList.add("open");
+    setTimeout(() => sidebar.classList.remove("open"), 3000);
+  }
+})();
+</script>
 </body>
 </html>
