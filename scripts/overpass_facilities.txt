@@ -1,0 +1,21 @@
+[out:json][timeout:300];
+area["name"="서울특별시"]["admin_level"="4"]->.seoul;
+(
+  nwr["tourism"="museum"](area.seoul);
+  nwr["tourism"="gallery"](area.seoul);
+  nwr["amenity"="theatre"](area.seoul);
+  nwr["amenity"="arts_centre"](area.seoul);
+  nwr["amenity"="library"](area.seoul);
+  nwr["amenity"="cinema"](area.seoul);
+  nwr["amenity"="planetarium"](area.seoul);
+  nwr["amenity"="music_venue"](area.seoul);
+  nwr["amenity"="exhibition_centre"](area.seoul);
+  nwr["historic"="palace"](area.seoul);
+  nwr["historic"="castle"](area.seoul);
+  nwr["historic"="city_gate"](area.seoul);
+  nwr["historic"="monument"](area.seoul);
+  nwr["historic"="memorial"]["name"](area.seoul);
+  nwr["historic"="fort"](area.seoul);
+  nwr["amenity"="community_centre"]["community_centre"~"cultural|arts"](area.seoul);
+);
+out center tags;

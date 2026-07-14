@@ -1,0 +1,7 @@
+[out:json][timeout:300];
+area["name"="서울특별시"]["admin_level"="4"]->.seoul;
+(
+  node["railway"="station"]["station"="subway"](area.seoul);
+  node["railway"="station"]["subway"="yes"](area.seoul);
+);
+out center tags;

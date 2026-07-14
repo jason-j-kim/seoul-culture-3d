@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>서울 문화시설 3D 연구 플랫폼 — Seoul Cultural Facilities Digital Twin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script>
+// 백그라운드(숨김) 탭에서는 requestAnimationFrame이 정지되어 지도 초기화가 멈춘다.
+// 숨김 상태로 열린 경우 setTimeout 기반 프레임으로 대체해 항상 초기화되도록 한다.
+if (document.visibilityState === "hidden") {
+  window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 33);
+  window.cancelAnimationFrame = id => clearTimeout(id);
+}
+</script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --panel-bg: rgba(252, 252, 250, 0.96);
+    --ink: #1d2129;
+    --muted: #6b7280;
+    --line: #d8dade;
+    --accent: #2b5876;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color: var(--ink); }
+  #map { position: absolute; inset: 0; }
+  #map.night canvas { filter: brightness(0.62) saturate(0.75) hue-rotate(-10deg); }
+
+  .panel {
+    position: absolute; z-index: 10; background: var(--panel-bg);
+    border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12); font-size: 12.5px;
+  }
+  #sidebar {
+    top: 12px; left: 12px; width: 318px; max-height: calc(100% - 70px);
+    overflow-y: auto; padding: 14px 16px;
+  }
+  #sidebar h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: -.2px; }
+  #sidebar .sub { color: var(--muted); font-size: 11px; margin-bottom: 10px; line-height: 1.5; }
+  .sec { border-top: 1px solid var(--line); padding: 10px 0 4px; }
+  .sec h2 { font-size: 12px; margin: 0 0 8px; color: var(--accent); text-transform: none; }
+  label { display: block; margin: 4px 0; cursor: pointer; }
+  select, input[type=text] { width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; font-size: 12.5px; background: #fff; }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: 6px; align-items: center; margin: 5px 0; }
+  .row > * { flex: 1; }
+  .mode-btns { display: flex; gap: 6px; margin: 8px 0 4px; }
+  .mode-btns button, .scene-btn, .dl-btn {
+    flex: 1; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fff; cursor: pointer; font-size: 12px; color: var(--ink);
+  }
+  .mode-btns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .scene-btn { display: block; width: 100%; text-align: left; margin: 3px 0; }
+  .scene-btn:hover, .dl-btn:hover { background: #eef2f6; }
+  .typegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .typegrid label { font-size: 11.5px; margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .cnt { color: var(--muted); font-size: 10.5px; }
+
+  #legend { bottom: 26px; right: 12px; padding: 10px 12px; max-width: 230px; }
+  #legend h3 { margin: 0 0 6px; font-size: 12px; }
+  #legend .li { display: flex; align-items: center; gap: 6px; margin: 2px 0; font-size: 11px; }
+  #legend .grad { height: 10px; border-radius: 3px; background: linear-gradient(90deg,#fdf6ec,#f2c057,#c94f30,#701f28); margin: 4px 0 2px; }
+  #legend .meta { color: var(--muted); font-size: 10px; margin-top: 6px; line-height: 1.5; border-top: 1px solid var(--line); padding-top: 5px; }
+
+  #statsbox { top: 12px; right: 12px; width: 330px; max-height: calc(100% - 70px); overflow-y: auto; padding: 13px 15px; display: none; }
+  #statsbox h2 { font-size: 13px; margin: 0 0 8px; }
+  #statsbox table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  #statsbox th, #statsbox td { padding: 3px 4px; border-bottom: 1px solid var(--line); text-align: right; }
+  #statsbox th:first-child, #statsbox td:first-child { text-align: left; }
+  .bar { height: 8px; background: var(--accent); border-radius: 2px; min-width: 1px; }
+  .barrow { display: grid; grid-template-columns: 92px 1fr 34px; gap: 6px; align-items: center; margin: 2px 0; font-size: 11px; }
+
+  #footer {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 9;
+    background: rgba(30,33,40,.85); color: #cfd4dc; font-size: 10.5px;
+    padding: 3px 12px; display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  #footer b { color: #fff; font-weight: 600; }
+
+  .maplibregl-popup { max-width: 320px !important; font-size: 12px; }
+  .maplibregl-popup-content { padding: 12px 14px; border-radius: 8px; }
+  .pop h3 { margin: 0 0 2px; font-size: 13.5px; }
+  .pop .ptype { color: var(--accent); font-size: 11px; margin-bottom: 6px; }
+  .pop table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .pop td { padding: 2px 4px 2px 0; vertical-align: top; border-bottom: 1px dotted #e5e7eb; }
+  .pop td:first-child { color: var(--muted); white-space: nowrap; width: 82px; }
+  .pop .na { color: #b0b4bb; }
+
+  #compare-modal { display:none; top: 60px; left: 50%; transform: translateX(-50%); width: 560px; max-height: 75%; overflow-y:auto; padding: 16px 18px; z-index: 30; }
+  #compare-modal table { width:100%; border-collapse: collapse; font-size: 12px; }
+  #compare-modal th, #compare-modal td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+  #compare-modal th:first-child, #compare-modal td:first-child { text-align: left; }
+  #compare-modal .close { float: right; cursor: pointer; border: none; background: none; font-size: 16px; }
+  .hint { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 4px 0; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="sidebar" class="panel">
+  <h1>서울 문화시설 3D 연구 플랫폼</h1>
+  <div class="sub">실제 지형(SRTM/AWS DEM) · 실제 건물(OpenStreetMap) · 문화시설 2,149개소<br>좌표계 WGS84 (EPSG:4326)</div>
+
+  <div class="mode-btns">
+    <button id="btn-real" class="on">현실 모드</button>
+    <button id="btn-analysis">분석 모드</button>
+    <button id="btn-night">야간</button>
+  </div>
+
+  <div class="sec">
+    <h2>검색 · 필터</h2>
+    <input type="text" id="q" placeholder="시설명 검색 (예: 국립중앙박물관)">
+    <div class="row">
+      <select id="f-gu"><option value="">전체 자치구</option></select>
+      <select id="f-pub">
+        <option value="">공공·민간 전체</option>
+        <option value="공공">공공</option>
+        <option value="민간">민간(추정)</option>
+        <option value="확인 필요">확인 필요</option>
+      </select>
+    </div>
+    <div class="hint" id="filter-count"></div>
+  </div>
+
+  <div class="sec">
+    <h2>시설 유형 <span class="cnt">(색상 = 지도 표기)</span></h2>
+    <div class="typegrid" id="typelist"></div>
+    <div class="row">
+      <button class="dl-btn" id="type-all">전체 선택</button>
+      <button class="dl-btn" id="type-none">전체 해제</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>분석 레이어 <span class="cnt">(분석 모드)</span></h2>
+    <label><input type="checkbox" id="l-heat"> 커널 밀도(열지도)</label>
+    <label><input type="checkbox" id="l-grid"> 500m 격자 시설 밀도</label>
+    <label><input type="checkbox" id="l-underserved"> 문화소외 후보 격자 <span class="cnt">(최근접 시설 &gt;800m)</span></label>
+    <label><input type="checkbox" id="l-choro"> 자치구 단계구분도</label>
+    <select id="choro-metric" style="margin:3px 0">
+      <option value="시설수">자치구별 시설 수</option>
+      <option value="인구1만명당">인구 1만명당 시설 수</option>
+      <option value="면적1km2당">면적 1㎢당 시설 수</option>
+    </select>
+    <label><input type="checkbox" id="l-subway" checked> 지하철역 (298개)</label>
+    <label><input type="checkbox" id="l-boundary" checked> 자치구 경계</label>
+  </div>
+
+  <div class="sec">
+    <h2>지형 · 건물</h2>
+    <div class="row"><span style="flex:0 0 90px">지형 강조</span><input type="range" id="terrain-ex" min="0" max="2.5" step="0.1" value="1.2"></div>
+    <div class="row"><span style="flex:0 0 90px">건물 투명도</span><input type="range" id="bld-op" min="0" max="1" step="0.05" value="0.85"></div>
+    <div class="row"><span style="flex:0 0 90px">시설 표식</span><input type="range" id="icon-size" min="0" max="1.6" step="0.1" value="1"></div>
+  </div>
+
+  <div class="sec">
+    <h2>대표 장면 (카메라)</h2>
+    <button class="scene-btn" data-scene="0">1. 서울 전체 조감 — 한강·산악·남북 도시구조</button>
+    <button class="scene-btn" data-scene="1">2. 역사도심 — 광화문·경복궁·북악산</button>
+    <button class="scene-btn" data-scene="2">3. 한강 문화축 — 여의도~노들섬~성수~잠실</button>
+    <button class="scene-btn" data-scene="3">4. 강남 문화시설 — 예술의전당·코엑스</button>
+    <button class="scene-btn" data-scene="4">5. 서북권 창작문화축 — 홍대·상암</button>
+    <button class="scene-btn" data-scene="5">6. 동북권 문화 접근성 — 노원·도봉·창동</button>
+    <button class="scene-btn" data-scene="6">7. 문화소외지역 분석 뷰</button>
+  </div>
+
+  <div class="sec">
+    <h2>통계 · 비교 · 내려받기</h2>
+    <div class="row">
+      <button class="dl-btn" id="btn-stats">자치구 통계</button>
+      <button class="dl-btn" id="btn-compare">지역 비교</button>
+    </div>
+    <div class="row">
+      <button class="dl-btn" id="dl-geojson">GeoJSON</button>
+      <button class="dl-btn" id="dl-csv">CSV</button>
+    </div>
+    <div class="hint">내려받기는 현재 필터가 적용된 시설 데이터입니다.</div>
+  </div>
+</div>
+
+<div id="statsbox" class="panel"></div>
+
+<div id="legend" class="panel">
+  <h3 id="legend-title">시설 유형</h3>
+  <div id="legend-body"></div>
+  <div class="meta">
+    데이터: OpenStreetMap(ODbL) 2026-07 · 지형: AWS Terrain(SRTM) ·
+    경계: 통계청/서울시(2013) · 분석단위: 시설 지점 / 500m 격자 / 자치구 ·
+    지하철 거리는 직선거리(네트워크 거리 아님)
+  </div>
+</div>
+
+<div id="compare-modal" class="panel">
+  <button class="close" onclick="document.getElementById('compare-modal').style.display='none'">✕</button>
+  <h2 style="font-size:14px;margin:0 0 10px">두 자치구 비교</h2>
+  <div class="row">
+    <select id="cmp-a"></select>
+    <span style="flex:0 0 20px;text-align:center">vs</span>
+    <select id="cmp-b"></select>
+  </div>
+  <div id="cmp-result" style="margin-top:10px"></div>
+</div>
+
+<div id="footer">
+  <span><b>서울 문화시설 3D 연구 플랫폼</b> — 연구·정책분석용 프로토타입</span>
+  <span>시설 데이터 기준일: <b>2026-07-02</b> (OSM 스냅숏)</span>
+  <span>인구: 주민등록인구 근사치(2024, 확인 필요)</span>
+  <span>© OpenStreetMap contributors · OpenFreeMap · AWS Terrain Tiles</span>
+</div>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>
