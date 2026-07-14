@@ -1,0 +1,8 @@
+[out:json][timeout:300];
+area["name"="서울특별시"]["admin_level"="4"]->.seoul;
+(
+  nwr["craft"="coffee_roaster"](area.seoul);
+  nwr["shop"="coffee"](area.seoul);
+  nwr["amenity"="cafe"]["name"](area.seoul);
+);
+out center tags;

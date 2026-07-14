@@ -20,6 +20,7 @@ const TYPE_COLORS = {
   "궁궐·전통문화시설": "#b7950b",
   "기념관·기념물": "#909497",
   "과학문화시설": "#1abc9c",
+  "스페셜티 카페": "#6f4e37",
 };
 const TYPES = Object.keys(TYPE_COLORS);
 const GUS = ["종로구","중구","용산구","성동구","광진구","동대문구","중랑구","성북구","강북구","도봉구","노원구","은평구","서대문구","마포구","양천구","강서구","구로구","금천구","영등포구","동작구","관악구","서초구","강남구","송파구","강동구"];
@@ -84,13 +85,14 @@ async function init() {
   // 건물 압출 레이어 식별(스타일 내 실제 건물 3D 레이어)
   extrusionLayers = map.getStyle().layers.filter(l => l.type === "fill-extrusion").map(l => l.id);
 
-  // ----- 데이터 로드 -----
+  // ----- 데이터 로드 (DATA_V: 데이터 갱신 시 캐시 무효화) -----
+  const DATA_V = "3";
   const [fac, districts, grid, subway, statsJ] = await Promise.all([
-    fetch("data/facilities.geojson").then(r => r.json()),
-    fetch("data/districts.geojson").then(r => r.json()),
-    fetch("data/grid500.geojson").then(r => r.json()),
-    fetch("data/subway.geojson").then(r => r.json()),
-    fetch("data/stats_by_district.json").then(r => r.json()),
+    fetch("data/facilities.geojson?v=" + DATA_V).then(r => r.json()),
+    fetch("data/districts.geojson?v=" + DATA_V).then(r => r.json()),
+    fetch("data/grid500.geojson?v=" + DATA_V).then(r => r.json()),
+    fetch("data/subway.geojson?v=" + DATA_V).then(r => r.json()),
+    fetch("data/stats_by_district.json?v=" + DATA_V).then(r => r.json()),
   ]);
   FAC = fac; STATS = statsJ.stats;
 

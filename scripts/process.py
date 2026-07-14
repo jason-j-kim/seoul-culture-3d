@@ -275,6 +275,107 @@ sub_fc = {"type": "FeatureCollection", "features": [
 with open(f"{BASE}/data/subway.geojson", "w", encoding="utf-8") as f:
     json.dump(sub_fc, f, ensure_ascii=False)
 
+# ---------- 스페셜티 카페 선별 ----------
+# 기준(투명성 원칙): ① 대형 프랜차이즈 제외 ② 스페셜티 브랜드 상호 / 로스터리 태그 /
+# 로스팅·드립·브루잉 계열 상호 키워드 / 원두전문점 태그 중 하나 이상 충족.
+# '예술적 분위기' 자체는 데이터로 검증 불가 — 아래 근거를 시설 속성에 명시한다.
+CAFE_CHAIN = re.compile(r"스타벅스|starbucks|커피빈|coffee ?bean|이디야|ediya|투썸|twosome|메가\s?(엠지씨)?커피|mega ?coffee|컴포즈|compose|빽다방|paik.?s|할리스|hollys|탐앤탐스|tom n toms|파스쿠찌|pascucci|엔제리너스|angel.?in.?us|카페베네|caffe ?bene|드롭탑|더벤티|매머드|mammoth|커피에반하다|셀렉토|바나프레소|공차|gong ?cha|던킨|dunkin|배스킨|baskin|크리스피|krispy|파리바게|paris ?bag|뚜레쥬르|tous|노티드|설빙|요거프레소|쥬씨|스무디킹|커피나무|만랩|토프레소|카페게이트|더리터|하삼동|감성커피|isaac|이삭토스트|nespresso|네스프레소|로네펠트", re.I)
+CAFE_KW = re.compile(r"로스터|로스팅|로스터리|roast|브루잉|brew(ing|ers)\b|드립|drip|스페셜티|specialty|에스프레소\s?바|espresso ?bar|coffee ?(lab|bar|works?|stand)|커피\s?(랩|바|공방|볶는)|핸드드립|커피집", re.I)
+CAFE_BRAND = re.compile(r"프릳츠|fritz|앤트러사이트|anthracite|커피리브레|coffee ?libre|테라로사|terarosa|센터\s?커피|center ?coffee|헬카페|hell ?cafe|매뉴팩트|manufact|로우키|lowkey|챔프커피|champ ?coffee|커피한약방|피어커피|peer ?coffee|블루보틀|blue ?bottle|폴\s?바셋|paul ?bassett|펠트\s?커피|felt ?coffee|모모스|momos|리사르|leesar|나무사이로|카페뎀셀브즈|themselves|커피몽타주|montage|메쉬커피|mesh ?coffee|엘카페|el ?cafe|테일러커피|tailor ?coffee", re.I)
+
+cafe_items = []
+try:
+    with open(f"{BASE}/data/raw_cafes.json", encoding="utf-8") as f:
+        raw_cafes = json.load(f)
+    for el in raw_cafes["elements"]:
+        tags = el.get("tags", {})
+        nm = tags.get("name")
+        if not nm:
+            continue
+        if CAFE_CHAIN.search(nm) or (tags.get("brand") and CAFE_CHAIN.search(tags["brand"])):
+            continue
+        if CAFE_BRAND.search(nm):
+            basis = "스페셜티 브랜드 상호"
+        elif tags.get("craft") == "coffee_roaster":
+            basis = "로스터리 태그(OSM craft=coffee_roaster)"
+        elif CAFE_KW.search(nm):
+            basis = "상호 키워드(로스팅·드립·브루잉·커피랩 등)"
+        elif tags.get("shop") == "coffee":
+            basis = "원두전문점 태그(OSM shop=coffee)"
+        else:
+            continue
+        lon = el.get("lon") or el.get("center", {}).get("lon")
+        lat = el.get("lat") or el.get("center", {}).get("lat")
+        if lon is None:
+            continue
+        cafe_items.append({"el": el, "tags": tags, "name": nm.strip(), "cat": "스페셜티 카페",
+                           "lon": lon, "lat": lat, "otype": el["type"], "basis": basis})
+except FileNotFoundError:
+    print("raw_cafes.json 없음 — 카페 레이어 생략")
+
+# 카페 중복 제거(동일 명칭 300m)
+cgroups = defaultdict(list)
+for it in cafe_items:
+    cgroups[normname(it["name"])].append(it)
+cafes_dedup = []
+for nm, grp in cgroups.items():
+    grp.sort(key=lambda x: {"relation": 0, "way": 1, "node": 2}[x["otype"]])
+    kept = []
+    for it in grp:
+        if not any(haversine(it["lon"], it["lat"], k["lon"], k["lat"]) < 300 for k in kept):
+            kept.append(it)
+    cafes_dedup.extend(kept)
+
+n_cafe = 0
+for it in cafes_dedup:
+    gu = find_district(it["lon"], it["lat"])
+    if gu is None:
+        continue
+    tags = it["tags"]
+    st_name, st_dist = nearest_station(it["lon"], it["lat"])
+    props = {
+        "id": f"C{n_cafe:05d}",
+        "시설명": it["name"],
+        "영문명": tags.get("name:en", "자료 없음"),
+        "유형": "스페셜티 카페",
+        "세부장르": it["basis"],
+        "주소": build_address(tags),
+        "자치구": gu,
+        "위도": round(it["lat"], 6),
+        "경도": round(it["lon"], 6),
+        "운영주체": tags.get("operator", "자료 없음"),
+        "공공민간": "민간",
+        "설립구분": "민간",
+        "설립연도": tags.get("start_date", "자료 없음"),
+        "웹사이트": tags.get("website", tags.get("contact:website", "자료 없음")),
+        "전화": tags.get("phone", tags.get("contact:phone", "자료 없음")),
+        "입장료": "해당 없음",
+        "휠체어접근": tags.get("wheelchair", "자료 없음"),
+        "운영상태": "운영 중(추정)",
+        "최근접지하철역": st_name,
+        "지하철역거리m_직선": st_dist,
+        "데이터출처": "OpenStreetMap (ODbL) — 상호·태그 기반 선별",
+        "데이터기준일": osm_ts[:10] if osm_ts else "확인 필요",
+        "데이터신뢰도": "선별 기준: " + it["basis"] + " · 대형 체인 제외 · 개별 검증 필요",
+        "osm_id": f"{it['otype']}/{it['el']['id']}",
+    }
+    features.append({"type": "Feature",
+                     "geometry": {"type": "Point", "coordinates": [round(it["lon"], 6), round(it["lat"], 6)]},
+                     "properties": props})
+    rows.append(props)
+    n_cafe += 1
+print("스페셜티 카페(체인 제외, 중복 제거, 서울 내):", n_cafe)
+
+# facilities 저장물 갱신(카페 포함)
+fc["features"] = features
+fc["metadata"]["specialty_cafe_note"] = "스페셜티 카페는 상호·OSM 태그 기반 선별(대형 체인 제외). 문화소외 격자 분석에서는 제외."
+with open(f"{BASE}/data/facilities.geojson", "w", encoding="utf-8") as f:
+    json.dump(fc, f, ensure_ascii=False)
+with open(f"{BASE}/output/facilities.csv", "w", encoding="utf-8-sig", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+    w.writeheader()
+    w.writerows(rows)
+
 # ---------- 자치구별 통계 ----------
 by_gu = defaultdict(lambda: defaultdict(int))
 for r in rows:
@@ -321,6 +422,8 @@ def cell_of(lon, lat):
 
 bucket = defaultdict(list)
 for f_ in features:
+    if f_["properties"]["유형"] == "스페셜티 카페":
+        continue  # 문화소외·밀도 격자는 문화시설만으로 계산 (카페는 참고 레이어)
     lo, la = f_["geometry"]["coordinates"]
     bucket[cell_of(lo, la)].append((lo, la))
 
