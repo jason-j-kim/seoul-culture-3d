@@ -7,11 +7,23 @@
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script>
 // 백그라운드(숨김) 탭에서는 requestAnimationFrame이 정지되어 지도 초기화가 멈춘다.
-// 숨김 상태로 열린 경우 setTimeout 기반 프레임으로 대체해 항상 초기화되도록 한다.
-if (document.visibilityState === "hidden") {
-  window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 33);
-  window.cancelAnimationFrame = id => clearTimeout(id);
-}
+// 네이티브 프레임이 정상일 때는 그대로 쓰고(60fps), 프레임이 멈춘 경우에만
+// setTimeout 폴백이 대신 실행되는 하이브리드 방식 — 어떤 가시성 상태에서도 초기화 보장.
+(function () {
+  const nraf = window.requestAnimationFrame.bind(window);
+  const ncaf = window.cancelAnimationFrame.bind(window);
+  window.requestAnimationFrame = function (cb) {
+    const h = { done: false };
+    h.raf = nraf(t => { if (!h.done) { h.done = true; clearTimeout(h.to); cb(t); } });
+    h.to = setTimeout(() => { if (!h.done) { h.done = true; ncaf(h.raf); cb(performance.now()); } }, 120);
+    return h;
+  };
+  window.cancelAnimationFrame = function (h) {
+    if (!h) return;
+    if (typeof h === "object") { h.done = true; ncaf(h.raf); clearTimeout(h.to); }
+    else ncaf(h);
+  };
+})();
 </script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <style>
