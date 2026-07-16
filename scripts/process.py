@@ -279,7 +279,7 @@ try:
             "운영상태": "휴관" if "휴관" in it["시설명"] else "운영 중(총람 등재)",
             "데이터출처": "문화체육관광부 2025 문화기반시설총람(공공누리 1유형)",
             "데이터기준일": "2025-01-01",
-            "데이터신뢰도": "정부 공식 총람 — 좌표는 " + ("OSM" if normname(it["시설명"]) in by_norm else "Nominatim 지오코딩(근사)"),
+            "데이터신뢰도": "정부 공식 총람 — 좌표는 " + ("OSM" if normname(it["시설명"]) in by_norm else it.get("좌표출처", "Nominatim 지오코딩(근사)")),
         }
         key = normname(it["시설명"])
         if key in by_norm:
