@@ -254,6 +254,61 @@ for i, it in enumerate(deduped):
 
 print("서울 경계 내 최종 시설 수:", len(features))
 
+# ---------- 문체부 2025 총람 병합 ----------
+# 공식 총람(기준일 2025-01-01)을 우선 자료로 삼아 OSM과 병합:
+# 동일 명칭이 이미 있으면 속성을 총람으로 교체(좌표는 더 정밀한 OSM 유지),
+# 없으면 지오코딩 좌표로 신규 추가. 좌표 실패 항목은 지도에서 제외하고 로그만 남긴다.
+try:
+    with open(f"{BASE}/data/mcst_seoul.json", encoding="utf-8") as f:
+        mcst = json.load(f)
+    by_norm = {}
+    for feat in features:
+        by_norm.setdefault(normname(feat["properties"]["시설명"]), feat)
+    added = merged = nocoord = 0
+    for it in mcst["items"]:
+        typ = it["유형"]
+        if "국악" in it["시설명"]:
+            typ = "국악공연시설"
+        newp = {
+            "시설명": it["시설명"], "영문명": "자료 없음", "유형": typ,
+            "세부장르": it["세부장르"], "주소": it["주소"],
+            "운영주체": it["운영주체"], "공공민간": it["공공민간"],
+            "설립구분": it["공공민간"], "설립연도": it["설립연도"],
+            "웹사이트": it["웹사이트"], "전화": it["전화"],
+            "입장료": "자료 없음", "휠체어접근": "자료 없음",
+            "운영상태": "휴관" if "휴관" in it["시설명"] else "운영 중(총람 등재)",
+            "데이터출처": "문화체육관광부 2025 문화기반시설총람(공공누리 1유형)",
+            "데이터기준일": "2025-01-01",
+            "데이터신뢰도": "정부 공식 총람 — 좌표는 " + ("OSM" if normname(it["시설명"]) in by_norm else "Nominatim 지오코딩(근사)"),
+        }
+        key = normname(it["시설명"])
+        if key in by_norm:
+            tgt = by_norm[key]
+            keep_coord = tgt["geometry"]["coordinates"]
+            gu = tgt["properties"]["자치구"]
+            st = (tgt["properties"]["최근접지하철역"], tgt["properties"]["지하철역거리m_직선"])
+            tgt["properties"].update(newp)
+            tgt["properties"]["자치구"] = gu
+            tgt["properties"]["위도"], tgt["properties"]["경도"] = keep_coord[1], keep_coord[0]
+            tgt["properties"]["최근접지하철역"], tgt["properties"]["지하철역거리m_직선"] = st
+            merged += 1
+        elif "경도" in it:
+            gu = find_district(it["경도"], it["위도"]) or it.get("자치구명", "확인 필요")
+            st_name, st_dist = nearest_station(it["경도"], it["위도"])
+            newp.update({"id": f"M{added:05d}", "자치구": gu, "위도": it["위도"], "경도": it["경도"],
+                         "최근접지하철역": st_name, "지하철역거리m_직선": st_dist, "osm_id": "없음(총람)"})
+            features.append({"type": "Feature",
+                             "geometry": {"type": "Point", "coordinates": [it["경도"], it["위도"]]},
+                             "properties": newp})
+            rows.append(newp)
+            added += 1
+        else:
+            nocoord += 1
+            print("  좌표 없음(지도 제외):", it["시설명"])
+    print(f"총람 병합: 기존 교체 {merged} / 신규 추가 {added} / 좌표실패 제외 {nocoord}")
+except FileNotFoundError:
+    print("mcst_seoul.json 없음 — 총람 병합 생략")
+
 fc = {"type": "FeatureCollection",
       "metadata": {"source": "OpenStreetMap via Overpass API", "license": "ODbL",
                    "osm_timestamp": osm_ts, "crs": "EPSG:4326",

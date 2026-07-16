@@ -86,7 +86,7 @@ async function init() {
   extrusionLayers = map.getStyle().layers.filter(l => l.type === "fill-extrusion").map(l => l.id);
 
   // ----- 데이터 로드 (DATA_V: 데이터 갱신 시 캐시 무효화) -----
-  const DATA_V = "3";
+  const DATA_V = "4";
   const [fac, districts, grid, subway, statsJ] = await Promise.all([
     fetch("data/facilities.geojson?v=" + DATA_V).then(r => r.json()),
     fetch("data/districts.geojson?v=" + DATA_V).then(r => r.json()),
